@@ -48,49 +48,47 @@ library ieee;
 	use ieee.std_logic_unsigned.all;
 	use ieee.numeric_std.all;
 
-library UNISIM;
-	use UNISIM.Vcomponents.all;
-
-use work.pkg_pacman.all;
-entity PACMAN is
+entity PACMAN_MACHINE is
+	generic (
+		--	only set one of these
+		PENGO    : std_logic := '0'; -- set to 1 when using Pengo ROMs, 0 otherwise
+		PACMAN   : std_logic := '1'; -- set to 1 for all other Pacman hardware games
+		-- only set one of these when PACMAN is set
+		MRTNT    : std_logic := '0'; -- set to 1 when using Mr TNT ROMs, 0 otherwise
+		LIZWIZ   : std_logic := '0'; -- set to 1 when using Lizard Wizard ROMs, 0 otherwise
+		MSPACMAN : std_logic := '0'  -- set to 1 when using Ms Pacman ROMs, 0 otherwise
+	);
 	port (
-		O_VIDEO_R             : out   std_logic_vector(3 downto 0);
-		O_VIDEO_G             : out   std_logic_vector(3 downto 0);
-		O_VIDEO_B             : out   std_logic_vector(3 downto 0);
-		O_HSYNC               : out   std_logic;
-		O_VSYNC               : out   std_logic;
-		--
-		O_AUDIO_L             : out   std_logic;
-		O_AUDIO_R             : out   std_logic;
-		--
-		I_SW                  : in    std_logic_vector(3 downto 0); -- active high
---		I_BUTTON              : in    std_logic_vector(3 downto 0);
---		O_LED                 : out   std_logic_vector(3 downto 0);
-		--
-		I_RESET               : in    std_logic;
-		CLK_IN                : in    std_logic
+		clk                   : in  std_logic;
+		ena_6                 : in  std_logic;
+		reset                 : in  std_logic;
+
+		-- video
+		video_r               : out std_logic_vector(2 downto 0);
+		video_g               : out std_logic_vector(2 downto 0);
+		video_b               : out std_logic_vector(1 downto 0);
+		hsync                 : out std_logic;
+		vsync                 : out std_logic;
+		comp_blank            : out std_logic;
+
+		-- audio
+		audio                 : out std_logic_vector(7 downto 0);
+
+		-- controls
+		in0_reg               : in  std_logic_vector( 7 downto 0);
+		in1_reg               : in  std_logic_vector( 7 downto 0);
+		dipsw1_reg            : in  std_logic_vector( 7 downto 0);
+		dipsw2_reg            : in  std_logic_vector( 7 downto 0)
 	);
 	end;
 
-architecture RTL of PACMAN is
-
-	constant PACMAN         : std_logic := '1'; -- 1 for Pacman hardware, 0 for Pengo hardware
-	signal decoder_ena_l    : std_logic;
-
-	signal I_RESET_L        : std_logic;
-	signal reset            : std_logic;
-	signal clk_ref          : std_logic;
-	signal clk              : std_logic;
-	signal ena_12           : std_logic;
-	signal ena_6            : std_logic;
+architecture RTL of PACMAN_MACHINE is
 
 	-- timing
 	signal hcnt             : std_logic_vector( 8 downto 0) := "010000000"; -- 80
 	signal vcnt             : std_logic_vector( 8 downto 0) := "011111000"; -- 0F8
 
 	signal do_hsync         : boolean := true;
-	signal hsync            : std_logic := '1';
-	signal vsync            : std_logic := '1';
 	signal hblank           : std_logic;
 	signal vblank           : std_logic;
 --	signal comp_sync_l      : std_logic;
@@ -113,8 +111,12 @@ architecture RTL of PACMAN is
 	signal cpu_data_out     : std_logic_vector( 7 downto 0);
 	signal cpu_data_in      : std_logic_vector( 7 downto 0);
 
+	signal program_rom      : std_logic_vector( 7 downto 0);
 	signal program_rom_dinl : std_logic_vector( 7 downto 0);
 	signal program_rom_dinh : std_logic_vector( 7 downto 0);
+	signal program_rom_bufl : std_logic_vector( 7 downto 0);
+	signal program_rom_bufh : std_logic_vector( 7 downto 0);
+	signal program_rom_din  : std_logic_vector( 7 downto 0);
 	signal rom_to_dec       : std_logic_vector( 7 downto 0);
 	signal rom_from_dec     : std_logic_vector( 7 downto 0);
 --	signal program_rom_cs_l : std_logic;
@@ -137,63 +139,27 @@ architecture RTL of PACMAN is
 	signal vram_l           : std_logic;
 	signal rams_data_out    : std_logic_vector( 7 downto 0);
 	-- more decode
-	signal wr0_l            : std_logic := '1';
-	signal wr1_l            : std_logic := '1';
-	signal wr2_l            : std_logic := '1';
-	signal iodec_out_l      : std_logic := '1';
-	signal iodec_wdr_l      : std_logic := '1';
-	signal iodec_in0_l      : std_logic := '1';
-	signal iodec_in1_l      : std_logic := '1';
-	signal iodec_dipsw1_l   : std_logic := '1';
-	signal iodec_dipsw2_l   : std_logic := '1';
+	signal wr0_l            : std_logic;
+	signal wr1_l            : std_logic;
+	signal wr2_l            : std_logic;
+	signal iodec_out_l      : std_logic;
+	signal iodec_wdr_l      : std_logic;
+	signal iodec_in0_l      : std_logic;
+	signal iodec_in1_l      : std_logic;
+	signal iodec_dipsw1_l   : std_logic;
+	signal iodec_dipsw2_l   : std_logic;
 
 	-- watchdog
 	signal watchdog_cnt     : std_logic_vector( 3 downto 0);
-	signal watchdog_reset_l : std_logic := '1';
-	signal freeze           : std_logic;
-
-	-- input registers
-	signal button_in        : std_logic_vector( 7 downto 0);
-	signal button_debounced : std_logic_vector( 7 downto 0);
-	signal in0_reg          : std_logic_vector( 7 downto 0) := (others => '1');
-	signal in1_reg          : std_logic_vector( 7 downto 0) := (others => '1');
-	signal dipsw1_reg       : std_logic_vector( 7 downto 0) := "11001001";
-	signal dipsw2_reg       : std_logic_vector( 7 downto 0);
-
-	-- scan doubler signals
-	signal video_r          : std_logic_vector( 2 downto 0);
-	signal video_g          : std_logic_vector( 2 downto 0);
-	signal video_b          : std_logic_vector( 1 downto 0);
-	--
-	signal video_r_x2       : std_logic_vector( 2 downto 0);
-	signal video_g_x2       : std_logic_vector( 2 downto 0);
-	signal video_b_x2       : std_logic_vector( 1 downto 0);
-	signal hsync_x2         : std_logic;
-	signal vsync_x2         : std_logic;
-	--
-	signal audio            : std_logic_vector( 7 downto 0);
-	signal audio_pwm        : std_logic;
+	signal watchdog_reset_l : std_logic;
+	signal freeze           : std_logic := '0';
 
 begin
-	I_RESET_L <= not (I_SW(0) and I_SW(1) and I_SW(2) and I_SW(3));
 
---  comp_sync_l <= not ( vsync or hsync);
---  O_COMP_SYNC_L <= comp_sync_l;
-	--
-	-- clocks
-	--
-	u_clocks : entity work.PACMAN_CLOCKS
-	port map (
-		I_CLK_REF  => CLK_IN,
-		I_RESET_L  => I_RESET_L,
-		--
-		O_CLK_REF  => clk_ref,
-		--
-		O_ENA_12   => ena_12,
-		O_ENA_6    => ena_6,
-		O_CLK      => clk,
-		O_RESET    => reset
-	);
+	comp_blank    <= not (hblank or vblank);
+
+--	comp_sync_l   <= not ( vsync or hsync);
+--	O_COMP_SYNC_L <= comp_sync_l;
 
 	--
 	-- video timing
@@ -342,6 +308,8 @@ begin
 	--
 	p_mem_decode_comb : process(cpu_rfsh_l, cpu_rd_l, cpu_mreq_l, cpu_addr)
 	begin
+		-- rom     0x0000 - 0x3FFF
+		-- syncbus 0x4000 - 0x7FFF
 		-- 7M
 		-- 7N
 		sync_bus_cs_l <= '1';
@@ -353,7 +321,7 @@ begin
 			--         program_rom_cs_l <= '0';
 			--      end if;
 
-			if (PACMAN = '0' and cpu_addr(15) = '1') or (PACMAN = '1' and cpu_addr(14) = '1')then
+			if (PENGO = '1' and cpu_addr(15) = '1') or (PACMAN = '1' and cpu_addr(14) = '1') then
 				sync_bus_cs_l <= '0';
 			end if;
 
@@ -412,8 +380,8 @@ begin
 	--When 2H is low, the CPU controls the bus.
 	ab <= cpu_addr(11 downto 0) when hcnt(1) = '0' else vram_addr_ab;
 
-	--  vram_l <= ( ( cpu_addr(12) or sync_bus_stb ) and not ( hcnt(1) and hcnt(0) ) );
-	vram_l <= ( ( cpu_addr(12) or sync_bus_stb ) and ( not hcnt(1) ) );
+	--	vram_l <= not ((not (cpu_addr(12) or sync_bus_stb)) or (hcnt(1) and hcnt(0)));
+	vram_l <= ( (cpu_addr(12) or sync_bus_stb) and not (hcnt(1) and hcnt(0))      );
 
 	-- PENGO                                                   PACMAN
 
@@ -444,7 +412,7 @@ begin
 	iodec_in1_l    <= '0' when sync_bus_r_w_l='1' and ( (PACMAN='0' and ab(7 downto 6)="10") or (PACMAN='1' and ab(7 downto 6)="01") ) and cpu_addr(12)='1' and sync_bus_stb='0' else '1'; -- rd in port 1 
 	iodec_in0_l    <= '0' when sync_bus_r_w_l='1' and ( (PACMAN='0' and ab(7 downto 6)="11") or (PACMAN='1' and ab(7 downto 6)="00") ) and cpu_addr(12)='1' and sync_bus_stb='0' else '1'; -- rd in port 0 
 
-	ps_reg <= control_reg(7) & control_reg(6) & control_reg(2) when PACMAN = '0' else "000";
+	ps_reg <= control_reg(7) & control_reg(6) & control_reg(2) when PENGO = '1' else "000";
 
 	p_control_reg : process
 	variable ena : std_logic_vector(7 downto 0);
@@ -494,38 +462,32 @@ begin
 	-- only cpu or ram are sources of interest
 	sync_bus_db <= cpu_data_out when hcnt(1) = '0' else rams_data_out;
 
-	-- simplifed again
-	cpu_data_in <=	cpu_vec_reg      when (cpu_iorq_l = '0') and (cpu_m1_l = '0') else
-						sync_bus_reg     when (sync_bus_wreq_l = '0') else
-						rom_from_dec     when (PACMAN = '0' and cpu_addr(15) = '0') else  -- ROM at 0000 - 7fff (Pengo decoded)
-						program_rom_dinl when (PACMAN = '1' and cpu_addr(15 downto 14) = "00") else   -- ROM at 0000 - 3fff (Pacman/Pengo)
-						program_rom_dinh when (PACMAN = '1' and cpu_addr(15 downto 13) = "100") else  -- ROM at 8000 - 9fff (LizWiz)
-						in0_reg          when (iodec_in0_l = '0') else
-						in1_reg          when (iodec_in1_l = '0') else
-						dipsw1_reg       when (iodec_dipsw1_l = '0') else
-						dipsw2_reg       when (iodec_dipsw2_l = '0') else
+	-- address decoder
+	cpu_data_in <=	cpu_vec_reg      when (cpu_iorq_l = '0') and (cpu_m1_l = '0')           else
+						sync_bus_reg     when (sync_bus_wreq_l = '0')                           else
+						program_rom      when (PENGO  = '1' and cpu_addr(15) = '0')             else  -- ROM at 0000 - 7fff (Pengo descrambler)
+						program_rom      when (PACMAN = '1' and cpu_addr(15 downto 14) = "00")  else  -- ROM at 0000 - 3fff and 8000 - bfff
+						program_rom      when (PACMAN = '1' and cpu_addr(15 downto 13) = "100") else  -- ROM at 8000 - 9fff (LizWiz)
+						in0_reg          when (iodec_in0_l = '0')                               else
+						in1_reg          when (iodec_in1_l = '0')                               else
+						dipsw1_reg       when (iodec_dipsw1_l = '0')                            else
+						dipsw2_reg       when (iodec_dipsw2_l = '0')                            else
 						rams_data_out;
 
-	rom_to_dec <=	program_rom_dinl when cpu_addr(15 downto 14) = "00" else  -- ROM at 0000 - 3fff (Pengo)
-						program_rom_dinh when cpu_addr(15 downto 14) = "01" else  -- ROM at 4000 - 7fff (Pengo)
-						(others => '0');
-
-	decoder_ena_l <= (PACMAN or cpu_addr(15));
-
-	-- Sega ROM descrambler adapted from MAME segacrpt.c source code
-	u_sega_decode : entity work.sega_decode
+	u_adec : entity work.rom_descrambler
+	generic map (
+		PENGO    => PENGO,
+		PACMAN   => PACMAN,
+		MRTNT    => MRTNT,
+		LIZWIZ   => LIZWIZ,
+		MSPACMAN => MSPACMAN
+	)
 	port map (
-		I_EN_n   => decoder_ena_l,
-		I_CK     => clk,
-		I_A(6)   => cpu_m1_l,
-		I_A(5)   => cpu_addr(12),
-		I_A(4)   => cpu_addr(8),
-		I_A(3)   => cpu_addr(4),
-		I_A(2)   => cpu_addr(0),
-		I_A(1)   => rom_to_dec(5),
-		I_A(0)   => rom_to_dec(3),
-		I_D      => rom_to_dec,
-		O_D      => rom_from_dec
+		CLK         => clk,
+		ENA         => ena_6,
+		cpu_m1_l    => cpu_m1_l,
+		addr        => cpu_addr,
+		data        => program_rom
 	);
 
   u_rams : entity work.PACMAN_RAMS
@@ -540,27 +502,13 @@ begin
 		CLK      => clk
 	);
 
-	-- example of internal program rom, if you have a big enough device
-	u_program_rom0 : entity work.ROM_PGM_0
-	port map (
-		CLK         => clk,
-		ENA         => ena_6,
-		ADDR        => cpu_addr(13 downto 0),
-		DATA        => program_rom_dinl
-	);
-
-	u_program_rom1 : entity work.ROM_PGM_1
-	port map (
-		CLK         => clk,
-		ENA         => ena_6,
-		ADDR        => cpu_addr(13 downto 0),
-		DATA        => program_rom_dinh
-	);
-
 	--
 	-- video subsystem
 	--
 	u_video : entity work.PACMAN_VIDEO
+	generic map (
+		MRTNT => MRTNT
+	)
 	port map (
 		I_HCNT        => hcnt,
 		I_VCNT        => vcnt,
@@ -582,43 +530,6 @@ begin
 		CLK           => clk
 	);
 
-	-- if PACMAN_DBLSCAN used, remember to add pacman_dblscan.vhd to the
-	-- sythesis script you are using (pacman.prg for xst / webpack)
-	--
-	u_dblscan : entity work.VGA_SCANDBL
-	port map (
-		I_R          => video_r,
-		I_G          => video_g,
-		I_B          => video_b,
-		I_HSYNC      => hsync,
-		I_VSYNC      => vsync,
-
-		O_R          => video_r_x2,
-		O_G          => video_g_x2,
-		O_B          => video_b_x2,
-		O_HSYNC      => hsync_x2,
-		O_VSYNC      => vsync_x2,
-		--
-		CLK          => ena_6,
-		CLK_X2       => ena_12
-	);
-
-	p_video_ouput : process
-	begin
-		wait until rising_edge(clk);
-		O_VIDEO_R <= video_r_x2 & '0';
-		O_VIDEO_G <= video_g_x2 & '0';
-		O_VIDEO_B <= video_b_x2 & "00";
-		O_HSYNC   <= hSync_X2;
-		O_VSYNC   <= vSync_X2;
-
---		O_VIDEO_R <= video_r & '0';
---		O_VIDEO_G <= video_g & '0';
---		O_VIDEO_B <= video_b & "00";
---		O_HSYNC   <= hSync;
---		O_VSYNC   <= vSync;
-	end process;
-
 	--
 	--
 	-- audio subsystem
@@ -639,96 +550,4 @@ begin
 		CLK           => clk
 	);
 
-	--
-	-- Audio DAC
-	--
-	u_dac : entity work.dac
-	generic map(
-		msbi_g => 7
-	)
-	port  map(
-		clk_i   => ena_12,
-		res_n_i => I_RESET_L,
-		dac_i   => audio,
-		dac_o   => audio_pwm
-	);
-
-	O_AUDIO_L <= audio_pwm;
-	O_AUDIO_R <= audio_pwm;
-
-	button_in(7 downto 4) <= not (I_SW(3 downto 0) and (I_RESET & I_RESET & I_RESET & I_RESET));
-	button_in(3 downto 0) <= not  I_SW(3 downto 0);
-
-	u_debounce : entity work.PACMAN_DEBOUNCE
-	generic map (
-		G_WIDTH => 8
-	)
-	port map (
-		I_BUTTON => button_in,
-		O_BUTTON => button_debounced,
-		CLK      => clk
-	);
-
-	p_input_registers : process
-	begin
-		wait until rising_edge(clk);
-		if (ena_6 = '1') then
-			if PACMAN = '1' then
-				in0_reg(7) <= button_debounced(7); -- credit
-				in0_reg(6) <= '1';                 -- coin2
-				in0_reg(5) <= '1';                 -- coin1
-				in0_reg(4) <= '1';                 -- test_l dipswitch (rack advance)
-				in0_reg(3) <= button_debounced(2); -- p1 down
-				in0_reg(2) <= button_debounced(3); -- p1 right
-				in0_reg(1) <= button_debounced(0); -- p1 left
-				in0_reg(0) <= button_debounced(1); -- p1 up
-
-				in1_reg(7) <= '1';                 -- table
-				in1_reg(6) <= button_debounced(6); -- start2
-				in1_reg(5) <= button_debounced(5); -- start1
-				in1_reg(4) <= '1';                 -- test
-				in1_reg(3) <= button_debounced(2); -- p2 down
-				in1_reg(2) <= button_debounced(3); -- p2 right
-				in1_reg(1) <= button_debounced(0); -- p2 left
-				in1_reg(0) <= button_debounced(1); -- p2 up
-
-				-- on is low
-				freeze <= '0';
-				dipsw1_reg(7) <= '1';              -- character set ?
-				dipsw1_reg(6) <= '1';              -- difficulty ?
-				dipsw1_reg(5 downto 4) <= "00";    -- bonus pacman at 10K
-				dipsw1_reg(3 downto 2) <= "10";    -- pacman (3)
-				dipsw1_reg(1 downto 0) <= "01";    -- cost  (1 coin, 1 play)
-			else -- PENGO
-				in0_reg(7) <= '1';                 -- p1 fire
-				in0_reg(6) <= '1';                 -- service
-				in0_reg(5) <= button_debounced(4); -- coin2
-				in0_reg(4) <= button_debounced(7); -- coin1
-				in0_reg(3) <= button_debounced(3); -- p1 right
-				in0_reg(2) <= button_debounced(0); -- p1 left
-				in0_reg(1) <= button_debounced(2); -- p1 down
-				in0_reg(0) <= button_debounced(1); -- p1 up
-
-				in1_reg(7) <= '1';                 -- p2 fire
-				in1_reg(6) <= button_debounced(6); -- start2
-				in1_reg(5) <= button_debounced(5); -- start1
-				in1_reg(4) <= '1';                 -- test
-				in1_reg(3) <= button_debounced(3); -- p2 right
-				in1_reg(2) <= button_debounced(0); -- p2 left
-				in1_reg(1) <= button_debounced(2); -- p2 down
-				in1_reg(0) <= button_debounced(1); -- p2 up
-
-				freeze <= '0';
-				-- closed is low
-				dipsw1_reg(7 downto 6) <= "11";    -- easy
-				dipsw1_reg(5) <= '1';              -- normal play
-				dipsw1_reg(4 downto 3) <= "00";    -- 5 pengos
-				dipsw1_reg(2) <= '0';              -- upright
-				dipsw1_reg(1) <= '0';              -- attrack sound on
-				dipsw1_reg(0) <= '0';              -- bonus at 30K
-
-				dipsw2_reg <= "11001100";          -- 1 coin/1 play
-			end if;
-		end if;
-	end process;
 end RTL;

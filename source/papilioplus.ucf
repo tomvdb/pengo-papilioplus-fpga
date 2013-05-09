@@ -180,8 +180,8 @@ NET "CLK_IN"             LOC="P94"  | IOSTANDARD=LVTTL | PERIOD=31.25ns ;
 # Wing 1 pod A
 NET "O_AUDIO_L"          LOC="P100" | IOSTANDARD=LVTTL | DRIVE=8 | SLEW=FAST ; #
 NET "O_AUDIO_R"          LOC="P98"  | IOSTANDARD=LVTTL | DRIVE=8 | SLEW=FAST ; #
-#NET "PS2CLK1"            LOC="P93"  | IOSTANDARD=LVTTL | DRIVE=8 | SLEW=FAST ; #
-#NET "PS2DAT1"            LOC="P88"  | IOSTANDARD=LVTTL | DRIVE=8 | SLEW=FAST ; #
+NET "PS2CLK1"            LOC="P93"  | IOSTANDARD=LVTTL | DRIVE=8 | SLEW=FAST ; #
+NET "PS2DAT1"            LOC="P88"  | IOSTANDARD=LVTTL | DRIVE=8 | SLEW=FAST ; #
 NET "I_RESET"            LOC="P85"  | IOSTANDARD=LVTTL | PULLDOWN            ; # active high
 #NET "W1_AH10"            LOC="P83"  | IOSTANDARD=LVTTL | DRIVE=8 | SLEW=FAST ; #
 #NET "W1_AH09"            LOC="P81"  | IOSTANDARD=LVTTL | DRIVE=8 | SLEW=FAST ; #
@@ -200,10 +200,10 @@ NET "I_RESET"            LOC="P85"  | IOSTANDARD=LVTTL | PULLDOWN            ; #
 #NET "JS1_2"              LOC="P50"  | IOSTANDARD=LVTTL | PULLDOWN            ; # active high
 #NET "JS1_6"              LOC="P55"  | IOSTANDARD=LVTTL | PULLDOWN            ; # active high
 #NET "JS1_1"              LOC="P57"  | IOSTANDARD=LVTTL | PULLDOWN            ; # active high
-NET "I_SW<3>"            LOC="P59"  | IOSTANDARD=LVTTL | PULLDOWN            ; # active high
-NET "I_SW<2>"            LOC="P62"  | IOSTANDARD=LVTTL | PULLDOWN            ; # active high
-NET "I_SW<1>"            LOC="P95"  | IOSTANDARD=LVTTL | PULLDOWN            ; # active high
-NET "I_SW<0>"            LOC="P74"  | IOSTANDARD=LVTTL | PULLDOWN            ; # active high
+#NET "I_SW<3>"            LOC="P59"  | IOSTANDARD=LVTTL | PULLDOWN            ; # active high
+#NET "I_SW<2>"            LOC="P62"  | IOSTANDARD=LVTTL | PULLDOWN            ; # active high
+#NET "I_SW<1>"            LOC="P95"  | IOSTANDARD=LVTTL | PULLDOWN            ; # active high
+#NET "I_SW<0>"            LOC="P74"  | IOSTANDARD=LVTTL | PULLDOWN            ; # active high
 NET "O_VIDEO_G<3>"       LOC="P78"  | IOSTANDARD=LVTTL | DRIVE=8 | SLEW=FAST ; #
 NET "O_VIDEO_G<2>"       LOC="P80"  | IOSTANDARD=LVTTL | DRIVE=8 | SLEW=FAST ; #
 NET "O_VIDEO_G<1>"       LOC="P82"  | IOSTANDARD=LVTTL | DRIVE=8 | SLEW=FAST ; #

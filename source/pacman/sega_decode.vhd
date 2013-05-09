@@ -26,7 +26,7 @@ library ieee;
 
 entity sega_decode is
 	port (
-		I_EN_n   : in  std_logic;
+		I_DEC    : in  std_logic;
 		I_CK     : in  std_logic;
 		--
 		I_A      : in  std_logic_vector(6 downto 0);
@@ -43,7 +43,7 @@ begin
 	p_decoder : process
 	begin
 		wait until rising_edge(I_CK);
-		if (I_EN_n = '1') then
+		if (I_DEC = '0') then
 			O_D <= I_D; -- passthough
 		else
 			sel <= I_A xor ("00000" & I_D(7) & I_D(7));

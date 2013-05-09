@@ -28,10 +28,10 @@ copy /b/y %rom_path_src%\ep1689c.8  + %rom_path_src%\ep1690b.7  + %rom_path_src%
 copy /b/y %rom_path_src%\ep1693b.21 + %rom_path_src%\ep1694b.20 + %rom_path_src%\ep5118b.32 + %rom_path_src%\ep5119c.31 %rom_path%\main2.bin > NUL
 
 REM generate RTL code for small PROMS
-%romgen_path%\romgen %rom_path_src%\pr1635.51     PROM1_DST  9 c     > %rom_path%\prom1_dst.vhd
+%romgen_path%\romgen %rom_path_src%\pr1635.51     PROM1_DST  8 a r e > %rom_path%\prom1_dst.vhd
 %romgen_path%\romgen %rom_path_src%\pr1636.70     PROM3_DST  7 a     > %rom_path%\prom3_dst.vhd
-%romgen_path%\romgen %rom_path_src%\pr1634.88     PROM4_DST 10 c     > %rom_path%\prom4_dst.vhd
-%romgen_path%\romgen %rom_path_src%\pr1633.78     PROM7_DST  5 c     > %rom_path%\prom7_dst.vhd
+%romgen_path%\romgen %rom_path_src%\pr1634.88     PROM4_DST 10 a     > %rom_path%\prom4_dst.vhd
+%romgen_path%\romgen %rom_path_src%\pr1633.78     PROM7_DST  5 a r e > %rom_path%\prom7_dst.vhd
 
 REM generate RAMB structures for larger ROMS
 %romgen_path%\romgen %rom_path%\gfx1.bin          GFX1      14 l r e > %rom_path%\gfx1.vhd
