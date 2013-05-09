@@ -49,8 +49,6 @@ library ieee;
 library UNISIM;
   use UNISIM.Vcomponents.all;
 
-use work.pkg_pacman.all;
-
 entity PACMAN_RAMS is
   port (
     I_AB              : in    std_logic_vector(11 downto 0);

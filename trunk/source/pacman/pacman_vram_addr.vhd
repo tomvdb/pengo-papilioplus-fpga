@@ -1,6 +1,6 @@
 --
 -- A simulation model of Pacman hardware
--- Copyright (c) MikeJ - January 2006
+-- Copyright (c) MikeJ & CarlW - January 2006
 --
 -- All rights reserved
 --
@@ -38,59 +38,36 @@
 --
 -- Revision list
 --
--- version 004 oct 2006 release, active high
--- version 003 Jan 2006 release, initial release of this module
+-- version 003 Jan 2006 release, general tidy up
+-- version 001 initial release
 --
 library ieee;
-  use ieee.std_logic_1164.all;
-  use ieee.std_logic_unsigned.all;
-  use ieee.numeric_std.all;
+	use ieee.std_logic_1164.all;
+	use ieee.std_logic_unsigned.all;
+	use ieee.numeric_std.all;
 
-use work.pkg_pacman.all;
-
-entity PACMAN_DEBOUNCE is
-  generic (
-    G_WIDTH           : in    integer
-    );
-  port (
-    I_BUTTON          : in    std_logic_vector(G_WIDTH-1 downto 0); -- active high
-    O_BUTTON          : out   std_logic_vector(G_WIDTH-1 downto 0);
-    CLK               : in    std_logic
-    );
+entity PACMAN_VRAM_ADDR is
+port (
+	AB      : out   std_logic_vector (11 downto 0);
+	H       : in    std_logic_vector ( 8 downto 0); -- H256_L H128 H64 H32 H16 H8 H4 H2 H1
+	V       : in    std_logic_vector ( 7 downto 0); --        V128 V64 v32 V16 V8 V4 V2 V1
+	FLIP    : in    std_logic
+);
 end;
 
-architecture RTL of PACMAN_DEBOUNCE is
-
-  signal tick_counter : std_logic_vector(12 downto 0);
-  signal button       : std_logic_vector(G_WIDTH-1 downto 0);
+architecture RTL of PACMAN_VRAM_ADDR is
+	signal sel      : std_logic;
+	signal y157_bus : std_logic_vector (11 downto 0);
+	signal y257_bus : std_logic_vector (11 downto 0);
+	signal hp       : std_logic_vector ( 4 downto 0);
+	signal vp       : std_logic_vector ( 4 downto 0);
 begin
+	hp <= H(7 downto 3) xor (FLIP & FLIP & FLIP & FLIP & FLIP);
+	vp <= V(7 downto 3) xor (FLIP & FLIP & FLIP & FLIP & FLIP);
 
-  p_debounce : process
-    variable tick : boolean;
-  begin
-    wait until rising_edge(CLK);
-    tick := (tick_counter(12) = '1');
-    -- pragma translate_off
-    -- synopsys translate_off
-    tick := true;
-    -- synopsys translate_on
-    -- pragma translate_on
-    if tick then
-      tick_counter <= '0' & x"FFE";
-    else
-      tick_counter <= tick_counter - "1";
-    end if;
-    -- tick approx 1.5KHz
+	sel      <= not ( (H(5) xor H(4)) or (H(5) xor H(6)) );
+	y157_bus <= '0' & H(2) & hp(3) & hp(3) & hp(3) & hp(3) & hp(0) & vp when sel='1' else x"FF" & H(6 downto 4) & H(2);
+	y257_bus <= y157_bus when H(8)='0' else '0' & H(2) & vp & hp;
+	AB <= y257_bus when H(1) = '1' else (others => 'Z');
 
-    for i in 0 to G_WIDTH-1 loop
-      if (I_BUTTON(i) = '1') then
-        button(i) <= '1';
-      elsif tick then
-        button(i) <= '0';
-      end if;
-    end loop;
-  end process;
-
-  O_BUTTON <= button;
-
-end architecture RTL;
+end RTL;

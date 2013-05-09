@@ -52,7 +52,7 @@ library UNISIM;
 entity PACMAN_CLOCKS is
 	port (
 		I_CLK_REF         : in    std_logic;
-		I_RESET_L         : in    std_logic;
+		I_RESET           : in    std_logic;
 		--
 		O_CLK_REF         : out   std_logic;
 		--
@@ -85,11 +85,9 @@ architecture RTL of PACMAN_CLOCKS is
 	--
 	-- This runs the game at 6.15 MHz which is 0.16% fast.
 	--
-	-- (The scan doubler requires a x2 freq clock)
+	-- (The scan converter requires a x4 freq clock)
 
 begin
-
-	reset <= not I_RESET_L;
 
 	O_CLK_REF <= clk0;
 	O_CLK     <= clk;
@@ -109,21 +107,9 @@ begin
 	 
 	dcm_sp_inst: DCM_SP
 	generic map(
-		CLK_FEEDBACK          => "1X",
-		CLKDV_DIVIDE          => 2.0,
 		CLKFX_DIVIDE          => 13,
 		CLKFX_MULTIPLY        => 10,
-		CLKIN_DIVIDE_BY_2     => FALSE,
-		CLKIN_PERIOD          => 31.25,
-		CLKOUT_PHASE_SHIFT    => "NONE",
-		DESKEW_ADJUST         => "SYSTEM_SYNCHRONOUS",
-		DSS_MODE              => "NONE",
-		DFS_FREQUENCY_MODE    => "LOW",   -- deprecated
-		DLL_FREQUENCY_MODE    => "LOW",   -- deprecated
-		DUTY_CYCLE_CORRECTION => TRUE,    -- deprecated
-		FACTORY_JF            => x"C080", -- deprecated
-		PHASE_SHIFT           => 0,
-		STARTUP_WAIT          => FALSE
+		CLKIN_PERIOD          => 31.25
 	)
 	port map (
 		-- Input clock
@@ -131,30 +117,16 @@ begin
 		CLKFB                 => clkfb,
 		-- Output clocks
 		CLK0                  => clk0,
-		CLK90                 => open,
-		CLK180                => open,
-		CLK270                => open,
-		CLK2X                 => open,
-		CLK2X180              => open,
 		CLKFX                 => clkfx,
-		CLKFX180              => open,
-		CLKDV                 => open,
-		-- Ports for dynamic phase shift
-		PSCLK                 => '0',
-		PSEN                  => '0',
-		PSINCDEC              => '0',
-		PSDONE                => open,
 		-- Other control and status signals
 		LOCKED                => locked_internal,
 		STATUS                => status_internal,
-		RST                   => reset,
-		-- Unused pin, tie low
-		DSSEN                 => '0'
+		RST                   => I_RESET
 	);
 
-  p_delay : process(I_RESET_L, clk)
+  p_delay : process(I_RESET, clk)
   begin
-    if (I_RESET_L = '0') then
+    if (I_RESET = '1') then
       delay_count <= x"00"; -- longer delay for cpu
       O_RESET <= '1';
     elsif rising_edge(clk) then
@@ -168,9 +140,9 @@ begin
     end if;
   end process;
 
-  p_clk_div : process(I_RESET_L, clk)
+  p_clk_div : process(I_RESET, clk)
   begin
-    if (I_RESET_L = '0') then
+    if (I_RESET = '1') then
       div_cnt <= (others => '0');
     elsif rising_edge(clk) then
       div_cnt <= div_cnt + "1";
