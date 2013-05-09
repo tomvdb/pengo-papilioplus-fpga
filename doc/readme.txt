@@ -39,6 +39,19 @@
 
  Revision list
 
+Games supported
+ Crush Roller
+ Gorkans
+ Lizard Wizard
+ Mr TNT
+ Ms Pacman
+ Pengo
+ Puckman
+ Pacplus
+ Super Glob
+ Pong
+ Eyes
+
  version 004 Release for Spartan3e starter kit.
 ********************************************************************************
      Note :
