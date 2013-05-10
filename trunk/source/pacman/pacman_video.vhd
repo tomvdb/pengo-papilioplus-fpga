@@ -77,7 +77,7 @@ end;
 architecture RTL of PACMAN_VIDEO is
 
 	signal sprite_xy_ram_wen  : std_logic;
-	signal sprite_xy_ram_temp : std_logic_vector(7 downto 0);
+	signal sprite_xy_ram_do   : std_logic_vector(7 downto 0);
 	signal dr                 : std_logic_vector(7 downto 0);
 
 	signal char_reg           : std_logic_vector(7 downto 0);
@@ -93,6 +93,7 @@ architecture RTL of PACMAN_VIDEO is
 
 	signal ca                 : std_logic_vector(13 downto 0);
 	signal char_rom_5ef_dout  : std_logic_vector(7 downto 0);
+	signal char_rom_5ef_buf   : std_logic_vector(7 downto 0);
 
 	signal shift_regl         : std_logic_vector(3 downto 0);
 	signal shift_regu         : std_logic_vector(3 downto 0);
@@ -100,32 +101,28 @@ architecture RTL of PACMAN_VIDEO is
 	signal shift_sel          : std_logic_vector(1 downto 0);
 
 	signal vout_obj_on        : std_logic;
+	signal vout_obj_on_t1     : std_logic;
 	signal vout_yflip         : std_logic;
 	signal vout_hblank        : std_logic;
+	signal vout_hblank_t1     : std_logic;
 	signal vout_db            : std_logic_vector(4 downto 0);
 
 	signal cntr_ld            : std_logic;
-	signal ra                 : std_logic_vector(7 downto 0);
 	signal sprite_ram_ip      : std_logic_vector(3 downto 0);
 	signal sprite_ram_op      : std_logic_vector(3 downto 0);
-	signal sprite_ram_addr    : std_logic_vector(11 downto 0);
-	signal sprite_ram_addr_t1 : std_logic_vector(11 downto 0);
-	signal vout_obj_on_t1     : std_logic;
-	signal col_rom_addr       : std_logic_vector(7 downto 0);
+	signal ra                 : std_logic_vector(7 downto 0);
+	signal ra_t1              : std_logic_vector(7 downto 0);
 
 	signal lut_4a             : std_logic_vector(7 downto 0);
 	signal lut_4a_t1          : std_logic_vector(7 downto 0);
-	signal vout_hblank_t1     : std_logic;
 	signal sprite_ram_reg     : std_logic_vector(3 downto 0);
 
-	signal video_out          : std_logic_vector(7 downto 0);
 	signal video_op_sel       : std_logic;
-	signal final_col          : std_logic_vector(4 downto 0);
-	signal lut_7f             : std_logic_vector(7 downto 0);
+	signal final_col          : std_logic_vector(3 downto 0);
 
 begin
 
-	p_sprite_ram_comb : process(ENA_6, I_HBLANK, I_HCNT, I_WR2_L, sprite_xy_ram_temp)
+	p_sprite_ram_comb : process(ENA_6, I_HBLANK, I_HCNT, I_WR2_L, sprite_xy_ram_do)
 	begin
 		-- ram enable is low when HBLANK_L is 0 (for sprite access) or
 		-- 2H is low (for cpu writes)
@@ -137,7 +134,7 @@ begin
 		end if;
 
 		if (I_HBLANK = '1') then
-			dr <= not sprite_xy_ram_temp;
+			dr <= not sprite_xy_ram_do;
 		else
 			dr <= "11111111"; -- pull ups on board
 		end if;
@@ -160,7 +157,7 @@ begin
 			wclk  => CLK,
 			we    => sprite_xy_ram_wen,
 			d     => I_DB(i),
-			dpo   => sprite_xy_ram_temp(i)
+			dpo   => sprite_xy_ram_do(i)
 		);
 	end generate;
 
@@ -204,13 +201,13 @@ begin
 		char_match_reg, char_sum_reg, char_hblank_reg,
 		xflip, yflip)
 	begin
-		-- 2h, 4e
 		obj_on <= char_match_reg or I_HCNT(8); -- 256h not 256h_l
 
 		ca(13) <= I_PS(2);
 		ca(12) <= char_hblank_reg;
 		ca(11 downto 6) <= db_reg(7 downto 2);
 
+		-- 2h, 4e
 		if (char_hblank_reg = '0') then
 			ca(5)     <= db_reg(1);
 			ca(4)     <= db_reg(0);
@@ -220,10 +217,21 @@ begin
 		end if;
 
 		ca(3) <= I_HCNT(2)       xor yflip;
-		ca(2) <= char_sum_reg(2) xor xflip;
 		ca(1) <= char_sum_reg(1) xor xflip;
-		ca(0) <= char_sum_reg(0) xor xflip;
+
+		-- descramble ROMs for Mr TNT (swap address lines A0 and A2)
+		if MRTNT = '1' then
+			ca(2) <= char_sum_reg(0) xor xflip;
+			ca(0) <= char_sum_reg(2) xor xflip;
+		else
+			ca(2) <= char_sum_reg(2) xor xflip;
+			ca(0) <= char_sum_reg(0) xor xflip;
+		end if;
 	end process;
+
+
+	-- descramble ROMs for Mr TNT (swap data lines D4 and D6)
+	char_rom_5ef_dout <= char_rom_5ef_buf(7) & char_rom_5ef_buf(4) & char_rom_5ef_buf(5) & char_rom_5ef_buf(6) & char_rom_5ef_buf(3 downto 0) when MRTNT = '1' else char_rom_5ef_buf;
 
 	-- char roms
 	char_rom_5ef : entity work.GFX1
@@ -231,7 +239,7 @@ begin
 		CLK         => CLK,
 		ENA         => ENA_6,
 		ADDR        => ca,
-		DATA        => char_rom_5ef_dout
+		DATA        => char_rom_5ef_buf
 	);
 
 	p_char_shift : process
@@ -285,16 +293,13 @@ begin
 		end if;
 	end process;
 
-	p_lut_4a_comb : process(vout_db, shift_op)
-	begin
-		col_rom_addr <= '0' & vout_db(4 downto 0) & shift_op(1 downto 0);
-	end process;
-
 	col_rom_4a : entity work.PROM4_DST
 	port map (
 		ADDR(9)          => '0',
 		ADDR(8)          => I_PS(1),
-		ADDR(7 downto 0) => col_rom_addr,
+		ADDR(7)          => '0',
+		ADDR(6 downto 2) => vout_db(4 downto 0),
+		ADDR(1 downto 0) => shift_op(1 downto 0),
 		DATA             => lut_4a
 	);
 
@@ -320,26 +325,26 @@ begin
 		end if;
 	end process;
 
-	sprite_ram_addr <= "0000" & ra;
-
 	u_sprite_ram : RAMB16_S4_S4
 	port map (
 		-- write side, 1 clk later than original
-		DOA   => open,
-		DIA   => sprite_ram_ip,
-		ADDRA => sprite_ram_addr_t1,
-		WEA   => vout_obj_on_t1,
-		ENA   => ENA_6,
-		SSRA  => '0',
-		CLKA  => CLK,
+		DOA                => open,
+		DIA                => sprite_ram_ip,
+		ADDRA(11 downto 8) => x"0",
+		ADDRA( 7 downto 0) => ra_t1,
+		WEA                => vout_obj_on_t1,
+		ENA                => ENA_6,
+		SSRA               => '0',
+		CLKA               => CLK,
 		-- read side
-		DOB   => sprite_ram_op,
-		DIB   => "0000",
-		ADDRB => sprite_ram_addr,
-		WEB   => '0',
-		ENB   => ENA_6,
-		SSRB  => '0',
-		CLKB  => CLK
+		DOB                => sprite_ram_op,
+		DIB                => x"0",
+		ADDRB(11 downto 8) => x"0",
+		ADDRB( 7 downto 0) => ra,
+		WEB                => '0',
+		ENB                => ENA_6,
+		SSRB               => '0',
+		CLKB               => CLK
 	);
 
 	p_sprite_ram_op_comb : process(sprite_ram_op, vout_obj_on_t1)
@@ -363,7 +368,7 @@ begin
 	begin
 		wait until rising_edge (CLK);
 		if (ENA_6 = '1') then
-			sprite_ram_addr_t1 <= sprite_ram_addr;
+			ra_t1 <= ra;
 			vout_obj_on_t1 <= vout_obj_on;
 			vout_hblank_t1 <= vout_hblank;
 			lut_4a_t1 <= lut_4a;
@@ -391,18 +396,22 @@ begin
 			final_col <= (others => '0');
 		else
 			if (video_op_sel = '1') then
-				final_col <= I_PS(0) & sprite_ram_reg; -- sprite
+				final_col <= sprite_ram_reg; -- sprite
 			else
-				final_col <= I_PS(0) & lut_4a(3 downto 0);
+				final_col <= lut_4a(3 downto 0);
 			end if;
 		end if;
 	end process;
 
+
+
+	-- assign video outputs from color LUT PROM
 	col_rom_7f : entity work.PROM7_DST
 	port map (
 		CLK              => CLK,
 		ENA              => ENA_6,
-		ADDR             => final_col,
+		ADDR(4)          => I_PS(0),
+		ADDR(3 downto 0) => final_col,
 		DATA(2 downto 0) => O_RED,
 		DATA(5 downto 3) => O_GREEN,
 		DATA(7 downto 6) => O_BLUE
