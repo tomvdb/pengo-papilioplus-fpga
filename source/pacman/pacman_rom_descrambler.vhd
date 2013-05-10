@@ -361,7 +361,7 @@ begin
 
 		if MSPACMAN = '1' and overlay_on = '1' then
 			--	forty 8-byte patches into Pac-Man code
-			-- Level 1 : if the CPU address presented falls in a patch range, substitute it with patched address
+			-- If the CPU address presented falls in a patch range, substitute it with patched address
 			-- OH THE HUMANITY!!!
 			patch_addr := addr(15 downto 3) & "000";
 			case patch_addr is
@@ -410,7 +410,6 @@ begin
 				when others => rom_patched <= addr;
 			end case;
 
-			-- Level 2 : if ROM access to certain regions, swap in ROM overlays
 -- Pacman ROMs
 --		0x0000-0x0FFF = 0x0000-0x0FFF;	/* pacman.6e */
 --		0x1000-0x1FFF = 0x1000-0x1FFF;	/* pacman.6f */
@@ -442,8 +441,8 @@ begin
 -- u6t 2K 1800-1FFF (0x8800-0x8FFF)
 -- u7  4K 2000-2FFF (0x3000-0x3FFF)
 
-			-- Level 3 : if the new patched address falls in certain Ms Pacman ranges, descramble address and data
-			-- high address bits are not scrambled so we know for sure if ROM hi or ROM lo is being accessed
+			-- If the new patched address falls in certain Ms Pacman ranges, swap in ROM overlays and descramble address and data
+			-- high address bits are not scrambled so we know for sure this only accesses ROM hi after address translation
 			case rom_patched(15 downto 11) is
 
 				-- addr = 0x3000-0x37FF, xlate to 0xB000-0xB7FF (physical ROM hi 2000-27FF), decrypt half of u7
@@ -452,7 +451,6 @@ begin
 					rom_data_out <= rom_hi(0) & rom_hi(4) & rom_hi(5) & rom_hi(7 downto 6) & rom_hi(3 downto 1);
 
 				-- addr = 0x3800-0x3FFF, xlate to 0xB800-0xBFFF (physical ROM hi 2800-2FFF), decrypt half of u7
-				-- 3ffa:3ffb 00 30 should hit bffa:bffb = 10 4d => descrambled 80 5a
 				when "00111" =>
 					rom_addr     <= x"2" & rom_patched(11) & rom_patched(3) & rom_patched(7) & rom_patched(9) & rom_patched(10) & rom_patched(8) & rom_patched(6 downto 4) & rom_patched(2 downto 0);
 					rom_data_out <= rom_hi(0) & rom_hi(4) & rom_hi(5) & rom_hi(7 downto 6) & rom_hi(3 downto 1);
