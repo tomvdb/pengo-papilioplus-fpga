@@ -123,10 +123,6 @@ architecture RTL of PACMAN_VIDEO is
 	signal final_col          : std_logic_vector(4 downto 0);
 	signal lut_7f             : std_logic_vector(7 downto 0);
 
-	-- non-xilinx ram
-	--type slv_array16 is array (natural range <>) of std_logic_vector(7 downto 0);
-	--shared variable sprite_ram : slv_array16(7 downto 0) := (others => (others => '0'));
-
 begin
 
 	p_sprite_ram_comb : process(ENA_6, I_HBLANK, I_HCNT, I_WR2_L, sprite_xy_ram_temp)
@@ -395,9 +391,9 @@ begin
 			final_col <= (others => '0');
 		else
 			if (video_op_sel = '1') then
-				final_col <= '0' & sprite_ram_reg; -- sprite
+				final_col <= I_PS(0) & sprite_ram_reg; -- sprite
 			else
-				final_col <= '0' & lut_4a(3 downto 0);
+				final_col <= I_PS(0) & lut_4a(3 downto 0);
 			end if;
 		end if;
 	end process;
