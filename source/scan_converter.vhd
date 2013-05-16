@@ -31,7 +31,9 @@
 --	Resolution   - Frame   | Pixel      | Front     | HSYNC      | Back       | Active      | HSYNC    | Front    | VSYNC    | Back     | Active    | VSYNC
 --              - Rate    | Clock      | Porch hA  | Pulse hB   | Porch hC   | Video hD    | Polarity | Porch vA | Pulse vB | Porch vC | Video vD  | Polarity
 -------------------------------------------------------------------------------------------------------------------------------------------------------------
---  VGA 640x480 - 60.00Hz | 25.175 MHz | 16 pixels |  96 pixels |  48 pixels |  640 pixels | negative | 11 lines | 2 lines  | 31 lines | 480 lines | negative
+--  In  256x224 - 59.18Hz |  6.000 MHz | 38 pixels |  32 pixels |  58 pixels |  256 pixels | negative | 16 lines | 8 lines  | 16 lines | 224 lines | negative
+--  Out 640x480 - 59.18Hz | 24.000 MHz |  2 pixels |  92 pixels |  34 pixels |  640 pixels | negative | 17 lines | 2 lines  | 29 lines | 480 lines | negative
+--  VGA 640x480 - 59.94Hz | 25.175 MHz | 16 pixels |  96 pixels |  48 pixels |  640 pixels | negative | 10 lines | 2 lines  | 33 lines | 480 lines | negative
 
 library ieee;
 	use ieee.std_logic_1164.all;
@@ -46,24 +48,35 @@ library ieee;
 library UNISIM;
 	use UNISIM.Vcomponents.all;
 
+--	This scan converter only stores the active portion of the video line in the memory buffer,
+--	at first one would think they could rely on the composite blanking signal to identify when
+--	the active video is on, but most game implementations seem to have a seriously misaligned
+--	video relative to the composite sync where the video is delayed relative to the composite
+--	sync by any number of pixel clocks from 8 to well over 20 depending on implementation.
+--	Instead of trying to delay the composite sync to match the video we completely ignore it
+--	and instead we use cstart and clength to mark the active video portion, effectively simulating
+-- a properly aligned composite sync
 entity VGA_SCANCONV is
 	generic (
+		hA				: integer range 0 to 1023 :=  16;	-- h front porch
 		hB				: integer range 0 to 1023 :=  96;	-- h sync
 		hC				: integer range 0 to 1023 :=  48;	-- h back porch
 		hres			: integer range 0 to 1023 := 640;	-- visible video
 		hpad			: integer range 0 to 1023 :=   0;	-- padding either side to reach standard VGA resolution (hres + 2*hpad = hD)
-		hmax			: integer range 0 to 1023 := 800;	-- output pixel clock / horizontal line frequency = max line in pixels
 
 		vB				: integer range 0 to 1023 :=   2;	-- v sync
-		vC				: integer range 0 to 1023 :=  31;	-- v back porch
+		vC				: integer range 0 to 1023 :=  33;	-- v back porch
 		vres			: integer range 0 to 1023 := 480;	-- visible video
-		vpad			: integer range 0 to 1023 :=   0		-- padding either side to reach standard VGA resolution (vres + 2*vpad = vD)
+		vpad			: integer range 0 to 1023 :=   0;	-- padding either side to reach standard VGA resolution (vres + 2*vpad = vD)
+
+		cstart		: integer range 0 to 1023 :=  48;	-- composite sync start
+		clength		: integer range 0 to 1023 := 640		-- composite sync length
+	
 	);
 	port (
 		I_VIDEO				: in  std_logic_vector(15 downto 0);
 		I_HSYNC				: in  std_logic;
 		I_VSYNC				: in  std_logic;
-		I_CMPBLK_N			: in  std_logic;
 		--
 		O_VIDEO				: out std_logic_vector(15 downto 0);
 		O_HSYNC				: out std_logic;
@@ -79,74 +92,22 @@ architecture RTL of VGA_SCANCONV is
 	--
 	-- input timing
 	--
-	signal ihsync_last	: std_logic := '0';
-	signal ivsync_last	: std_logic := '0';
-	signal out_cmpblk_n	: std_logic := '1';
-	signal out_cmpblk1_n	: std_logic := '1';
-	signal hpos_i			: std_logic_vector( 8 downto 0) := (others => '0');
+	signal ivsync_last_x4	: std_logic := '1';
+	signal ihsync_last		: std_logic := '1';
+	signal hpos_i				: std_logic_vector( 9 downto 0) := (others => '0');
 
 	--
 	-- output timing
 	--
 	signal ovsync_last	: std_logic := '0';
-	signal in_cmpblk_n	: std_logic_vector( 7 downto 0) := (others => '0');
-	signal hpos_o			: std_logic_vector( 9 downto 0) := (others => '0');
+	signal hpos_o			: std_logic_vector(10 downto 0) := (others => '0');
 
 	signal vcnt				: integer range 0 to 1023 := 0;
 	signal hcnt				: integer range 0 to 1023 := 0;
+	signal hcnti			: integer range 0 to 1023 := 0;
 
-	signal bank				: std_logic := '0';
-	signal bank_n			: std_logic := '1';
-
---pragma translate_off
-	signal qidx				: std_logic_vector( 7 downto 0) := (others => '0');
-	file qfile				: TEXT; -- open write_mode is "..\build\qvga0.ppm";
---pragma translate_on
 begin
--- debug: write .ppm format video frames to output files
--- pragma translate_off
-	p_debug : process(CLK)
-		variable rising_h		: boolean;
-		variable rising_v		: boolean;
-		variable armed			: boolean;
-		variable s				: line; -- debug
-	begin
-		if rising_edge (CLK) then
-			rising_h  := (I_HSYNC = '1') and (ihsync_last = '0');
-			rising_v  := (I_VSYNC = '1') and (ivsync_last = '0');
-			ihsync_last <= I_HSYNC;
-			ivsync_last <= I_VSYNC;
-
-			if rising_v then					-- at start of frame
-				armed := true;
-			end if;
-
-			if rising_h and armed then		-- at start of frame
-				armed := false;
-				qidx <= qidx + 1;				-- frame number
-				file_close(qfile);
-				write(s,"..\build\qvga"); write(s,conv_integer(qidx)); write(s,".ppm");
-				file_open(qfile,s.all, WRITE_MODE);
-				writeline(output,s);
-				--	# The P3 means colors are in ASCII, then 352 columns and 256 rows, then 15 for max color, then RGB triplets
-				write(s,"P3");						writeline(qfile,s);	--	P3
-				write(s,"# "); write(s, now);	writeline(qfile,s);	-- sim time
-				write(s,"352 256");				writeline(qfile,s);	--	352 256
-				write(s,"15");						writeline(qfile,s);	--	15
-			end if;
-
-			if (I_HSYNC = '1' and I_VSYNC = '1') then
-				write(s, conv_integer(I_VIDEO(11 downto 8)) ); write(s," ");	-- R
-				write(s, conv_integer(I_VIDEO( 7 downto 4)) ); write(s," ");	-- G
-				write(s, conv_integer(I_VIDEO( 3 downto 0)) );						-- B
-				writeline(qfile,s);
-			end if;
-		end if;
-	end process;
--- pragma translate_on
-
-	bank_n <= not bank;
-
+	-- dual port line buffer, max line of 512 pixels
 	u_ram : RAMB16_S18_S18
 		generic map (INIT_A => X"00000", INIT_B => X"00000", SIM_COLLISION_CHECK => "NONE")  -- "NONE", "WARNING", "GENERATE_X_ONLY", "ALL"
 		port map (
@@ -155,8 +116,7 @@ begin
 			DIA					=> I_VIDEO,
 			DOPA					=> open,
 			DIPA					=> "00",
-			ADDRA(9)				=> bank,
-			ADDRA(8 downto 0)	=> hpos_i,
+			ADDRA					=> hpos_i,
 			WEA					=> '1',
 			ENA					=> '1',
 			SSRA					=> '0',
@@ -167,108 +127,106 @@ begin
 			DIB					=> x"0000",
 			DOPB					=> open,
 			DIPB					=> "00",
-			ADDRB(9)				=> bank_n,
-			ADDRB(8 downto 0)	=> hpos_o(9 downto 1),
+			ADDRB					=> hpos_o(10 downto 1),
 			WEB					=> '0',
 			ENB					=> '1',
 			SSRB					=> '0',
 			CLKB					=> CLK_X4
 		);
 
-	-- alternate RAM banks every new horizontal line
-	p_bank : process(I_HSYNC)
+	-- horizontal counter for input video
+	p_hcounter : process
 	begin
-		if falling_edge(I_HSYNC) then
-			bank <= not bank;
+		wait until rising_edge(CLK);
+		ihsync_last <= I_HSYNC;
+
+		-- trigger off rising hsync
+		if I_HSYNC = '1' and ihsync_last = '0' then
+			hcnti <= 0;
+		else
+			hcnti <= hcnti + 1;
 		end if;
 	end process;
 
 	-- increment write position during active video
-	p_ram_in : process(CLK)
+	p_ram_in : process
 	begin
-		if rising_edge (CLK) then
-			-- delay input cmpblk to match input video
-			in_cmpblk_n(7 downto 0) <= in_cmpblk_n(6 downto 0) & I_CMPBLK_N; -- 8 clock delay
-			if in_cmpblk_n(7) = '0' then
-				hpos_i <= (others => '0');
-			else
-				hpos_i <= hpos_i + 1;
-			end if;
+		wait until rising_edge(CLK);
+
+		if (hcnti < cstart) or (hcnti > (cstart + clength)) then
+			hpos_i <= (others => '0');
+		else
+			hpos_i <= hpos_i + 1;
 		end if;
 	end process;
 
-	-- VGA H and V counters, synchronized to input frame V sync
-	p_out_ctrs : process(CLK_X4)
+	-- VGA H and V counters, synchronized to input frame V sync, then H sync
+	p_out_ctrs : process
+		variable trigger : boolean;
 	begin
-		if rising_edge (CLK_X4) then
-			ovsync_last <= I_VSYNC;
+		wait until rising_edge(CLK_X4);
+		ivsync_last_x4 <= I_VSYNC;
 
-			if (I_VSYNC = '0') and (ovsync_last = '1') then
+		if (I_VSYNC = '0') and (ivsync_last_x4 = '1') then
+			trigger := true;
+		elsif trigger and I_HSYNC = '0' then
+			trigger := false;
+			hcnt <= 0;
+			vcnt <= 0;
+		else
+			hcnt <= hcnt + 1;
+			if hcnt = (hA+hB+hC+hres+hpad+hpad-1) then
 				hcnt <= 0;
-				vcnt <= 0;
-			else
-				hcnt <= hcnt + 1;
-				if hcnt = hmax then
-					hcnt <= 0;
-					vcnt <= vcnt + 1;
-				end if;
+				vcnt <= vcnt + 1;
 			end if;
 		end if;
 	end process;
 
 	-- generate hsync
-	p_gen_hsync : process(CLK_X4)
+	p_gen_hsync : process
 	begin
-		if rising_edge (CLK_X4) then
-			-- H sync timing
-			if (hcnt < hB) then
-				O_HSYNC <= '0';
-			else
-				O_HSYNC <= '1';
-			end if;
+		wait until rising_edge(CLK_X4);
+		-- H sync timing
+		if (hcnt < hB) then
+			O_HSYNC <= '0';
+		else
+			O_HSYNC <= '1';
 		end if;
 	end process;
 
 	-- generate vsync
-	p_gen_vsync : process(CLK_X4)
+	p_gen_vsync : process
 	begin
-		if rising_edge (CLK_X4) then
-			-- V sync timing
-			if (vcnt < vB) then
-				O_VSYNC <= '0';
-			else
-				O_VSYNC <= '1';
-			end if;
+		wait until rising_edge(CLK_X4);
+		-- V sync timing
+		if (vcnt < vB) then
+			O_VSYNC <= '0';
+		else
+			O_VSYNC <= '1';
 		end if;
 	end process;
 
 	-- generate active output video
-	p_gen_active_vid : process(CLK_X4)
+	p_gen_active_vid : process
 	begin
-		if rising_edge (CLK_X4) then
-			-- visible video area 512x448 (doubled from the original game's 256x224)
-			if ((vcnt >= (vB + vC)) and (vcnt < (vB + vC + vres))) and ((hcnt >= (hB + hC)) and (hcnt < (hB + hC + hres))) then
-				hpos_o <= hpos_o + 1;
-			else
-				hpos_o <= (others => '0');
-			end if;
+		wait until rising_edge(CLK_X4);
+		-- visible video area doubled from the original game
+		if ((hcnt >= (hB + hC + hpad)) and (hcnt < (hB + hC + hres + hpad))) and ((vcnt >= (vB + vC + vpad)) and (vcnt < (vB + vC + vres + vpad))) then
+			hpos_o <= hpos_o + 1;
+		else
+			hpos_o <= (others => '0');
 		end if;
 	end process;
 
 	-- generate blanking signal including additional borders to pad the input signal to standard VGA resolution
-	p_gen_blank : process(CLK_X4)
+	p_gen_blank : process
 	begin
-		if rising_edge (CLK_X4) then
-			-- active video area 640x480 (VGA) after padding with blank borders
-			if ((vcnt >= (vB + vC - vpad)) and (vcnt < (vB + vC + vres + vpad))) and ((hcnt >= (hB + hC - hpad)) and (hcnt < (hB + hC + hres + hpad))) then
-				out_cmpblk_n <= '1';
-			else
-				out_cmpblk_n <= '0';
-			end if;
-
-			-- delay output cmpblk to match output video
-			out_cmpblk1_n <= out_cmpblk_n;	-- 1 clock delay
-			O_CMPBLK_N    <= out_cmpblk1_n;	-- 2 clock delay
+		wait until rising_edge(CLK_X4);
+		-- active video area 640x480 (VGA) after padding with blank borders
+		if ((hcnt >= (hB + hC)) and (hcnt < (hB + hC + hres + 2*hpad))) and ((vcnt >= (vB + vC)) and (vcnt < (vB + vC + vres + 2*vpad))) then
+			O_CMPBLK_N <= '1';
+		else
+			O_CMPBLK_N <= '0';
 		end if;
 	end process;
 

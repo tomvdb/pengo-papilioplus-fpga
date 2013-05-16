@@ -1,3 +1,3 @@
 @echo off
 cd ..\..
-papilio-prog.exe -f pacman_rel004_papilio_pengo\build\pacman.bit
+papilio-prog.exe -f pengo-papilioplus-fpga\build\papilio_top.bit
