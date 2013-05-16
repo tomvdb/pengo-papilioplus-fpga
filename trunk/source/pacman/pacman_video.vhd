@@ -167,7 +167,7 @@ begin
 		variable match : std_logic;
 	begin
 		wait until rising_edge (CLK);
-		if (I_HCNT(2 downto 0) = "011") and (ENA_6 = '1') then  -- rising 4h
+		if (ENA_6 = '1') and (I_HCNT(2 downto 0) = "011") then  -- rising 4h
 			inc := (not I_HBLANK);
 			-- 1f, 2f
 			sum := (I_VCNT(7 downto 0) & '1') + (dr & inc);
@@ -402,8 +402,6 @@ begin
 			end if;
 		end if;
 	end process;
-
-
 
 	-- assign video outputs from color LUT PROM
 	col_rom_7f : entity work.PROM7_DST

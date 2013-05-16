@@ -157,22 +157,24 @@ begin
 	-- Pacman resolution 224x288
 	u_scanconv : entity work.VGA_SCANCONV
 	generic map (
+		hA				=>  16,	-- h front porch
 		hB				=>  92,	-- h sync
-		hC				=>  48,	-- h back porch
-		hres			=> 576,	-- visible video
-		hpad			=>  32,	-- padding either side to reach standard VGA resolution (hres + 2*hpad = hD)
-		hmax			=> 767,	-- output pixel clock / horizontal line frequency = max line in pixels
+		hC				=>  46,	-- h back porch
+		hres			=> 578,	-- visible video
+		hpad			=>  18,	-- padding either side to reach standard VGA resolution (hres + 2*hpad = hD)
 
 		vB				=>   2,	-- v sync
-		vC				=>  48,	-- v back porch
+		vC				=>  32,	-- v back porch
 		vres			=> 448,	-- visible video
-		vpad			=>  16	-- padding either side to reach standard VGA resolution (vres + vpad = vD)
+		vpad			=>  16,	-- padding either side to reach standard VGA resolution (vres + vpad = vD)
+
+		cstart      =>  38,  -- composite sync start
+		clength     => 288   -- composite sync length
 	)
 	port map (
 		I_VIDEO                => video_out,
 		I_HSYNC                => hsync_i,
 		I_VSYNC                => vsync_i,
-		I_CMPBLK_N             => comp_blank,
 
 		O_VIDEO(15 downto 12)  => dummy,
 		O_VIDEO(11 downto  8)  => O_VIDEO_R,

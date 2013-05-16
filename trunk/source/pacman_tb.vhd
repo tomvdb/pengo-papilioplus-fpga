@@ -64,7 +64,7 @@ architecture Sim of PACMAN_TB is
 	constant CLKPERIOD : time := 31.25 ns;
 
 begin
-	u0 : entity work.PACMAN
+	u0 : entity work.papilio_top
 	port map(
 		O_VIDEO_R  => video_r,
 		O_VIDEO_G  => video_g,
@@ -78,7 +78,6 @@ begin
 		PS2CLK1    => PS2CLK1,
 		PS2DAT1    => PS2DAT1,
 		--
-		I_SW       => "0000",
 		I_RESET    => reset,
 		CLK_IN     => clk_ref
 	);

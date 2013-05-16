@@ -157,7 +157,6 @@ architecture RTL of PACMAN_MACHINE is
 begin
 
 	comp_blank    <= not (hblank or vblank);
-
 --	comp_sync_l   <= not ( vsync or hsync);
 --	O_COMP_SYNC_L <= comp_sync_l;
 
